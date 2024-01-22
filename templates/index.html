@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&family=Poppins:wght@600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../static/styles.css" />
+    <!-- <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='styles.css') }}"
+    /> -->
+    <title>Värdera din bil</title>
+  </head>
+  <body>
+    <h1 class="title">Värdera din bil med AI<span>*</span></h1>
+
+    <div class="info-box">
+      <p>
+        *Värdering är uppskattning baserad på data från liknande bilar sålda av
+        företag. Faktiskt värde kan skilja sig signifikant baserat på andra
+        faktorer såsom slitage, reparationsbehov etc.
+      </p>
+    </div>
+
+    <div class="grid-container">
+      <div class="manufacturer-container container">
+        <label for="manufacturer" class="important-select">Bilmärke</label>
+        <select name="manufacturer" id="all_manufacturers">
+          {% for c in all_manufacturers %}
+          <option value="{{ c }}">{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="model-container container">
+        <label for="model" class="important-select">Modell</label>
+        <select name="model" id="all_models">
+          {% for e in all_models %}
+          <option value="{{ e }}">{{ e }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="mileage-container container">
+        <label for="mileage">Miltal</label>
+        <input
+          type="number"
+          id="mileage"
+          name="mileage"
+          class="required-input"
+          min="1"
+          pattern="[0-9]+"
+          required
+        />
+      </div>
+
+      <div class="hp-container container">
+        <label for="hp">Hästkrafter</label>
+        <input
+          type="number"
+          id="hp"
+          name="hp"
+          min="50"
+          pattern="[0-9]+"
+          required
+        />
+      </div>
+
+      <div class="owners-container container">
+        <label for="owners">Antal ägare</label>
+        <input
+          type="number"
+          id="owners"
+          name="owners"
+          class="required-input"
+          min="1"
+          pattern="[0-9]+"
+          required
+        />
+      </div>
+
+      <div class="fuel-container container">
+        <label for="fuel">Bränsle</label>
+        <select name="fuel" id="fuels">
+          {% for f in all_fuels %}
+          <option value="{{ f }}">{{ f }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="gearbox-container container">
+        <label for="gearbox">Växellåda</label>
+        <select name="gearbox" id="gearboxes">
+          {% for g in all_gearboxes %}
+          <option value="{{ g }}">{{ g }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="traffic-date-container container">
+        <label for="traffic_date">Trafikdatum</label>
+        <input
+          type="date"
+          id="traffic_date"
+          name="traffic_date"
+          class="required-input"
+          pattern="\d{4}-\d{2}-\d{2}"
+          title="Datum måste ha format ÅÅÅÅ-MM-DD"
+          required
+        />
+      </div>
+
+      <div class="button-container container">
+        <button type="button" id="process_input">Värdera!</button>
+      </div>
+
+      <div class="result-container container" id="result"></div>
+    </div>
+
+    <script type="text/javascript">
+      $(document).ready(function () {
+        $("#all_manufacturers").change(function () {
+          // Function to update #all_models based on the selected brand
+          updateAllModels(updateFuelAndGearbox);
+        });
+
+        $("#all_models").change(function () {
+          // Trigger the AJAX request directly when #all_models changes
+          updateFuelAndGearbox();
+        });
+
+        function updateAllModels(callback) {
+          // Logic to update #all_models based on the selected brand
+          $.getJSON("/_update_car_dropdown", {
+            selected_manufacturer: $("#all_manufacturers").val(),
+          }).done(function (data) {
+            $("#all_models").html(data.html_string_selected);
+            // Once #all_models is updated, call the callback function
+            callback();
+          });
+        }
+
+        // function to update gearbox and fuels
+        function updateFuelAndGearbox() {
+          $.getJSON("/_update_fuel_and_gearbox_dropdown", {
+            selected_manufacturer: $("#all_manufacturers").val(),
+            selected_model: $("#all_models").val(),
+          }).done(function (data) {
+            console.log("Server Response:", data);
+            $("#fuels").html(data.html_fuels);
+            $("#gearboxes").html(data.html_gearboxes);
+          });
+        }
+
+        $(".required-input").on("input", function () {
+          // Check if all required input fields have data
+          var allInputsFilled =
+            $(".required-input").filter(function () {
+              return $(this).val().trim() === "";
+            }).length === 0;
+
+          // Enable or disable the button based on the condition
+          $("#process_input").prop("disabled", !allInputsFilled);
+        });
+
+        // trigger input when page reloads
+        $(".required-input").trigger("input");
+
+        // Process data when button is clicked
+        $("#process_input").click(function () {
+          $(this).prop("disabled", true);
+          $("#result").empty();
+          $("#result").text("Beräknar...");
+
+          $.getJSON("/_predict_price", {
+            selected_manufacturer: $("#all_manufacturers").val(),
+            selected_model: $("#all_models").val(),
+            selected_fuel: $("#fuels").val(),
+            selected_gearbox: $("#gearboxes").val(),
+            mileage: $("#mileage").val(),
+            owners: $("#owners").val(),
+            traffic_date: $("#traffic_date").val(),
+            hp: $("#hp").val(),
+          }).done(function (data) {
+            var predicted_price = data.predicted_price.toString();
+            var error = data.error.toString();
+            var n_cars = data.n_cars.toString();
+            var warning = "";
+            if (Number(n_cars) < 80) {
+              warning =
+                " (Eftersom träningsdatan är liten är osäkerheten stor.)";
+            }
+            var model_type = data.model_type;
+
+            var resultParagraph = $("<p>", {
+              text:
+                "Uppskattat värde: " +
+                predicted_price +
+                " +- " +
+                error +
+                " kr.",
+              id: "result-paragraph",
+            });
+
+            var infoParagraph = $("<p>", {
+              text:
+                "Prisuppskattning baseras på en " +
+                model_type +
+                " tränad på " +
+                n_cars +
+                " bilar." +
+                warning +
+                " Du kan få annorlunda resultat om du gör om värderingen.\n\nVill du veta mer? Hör av dig till markus.snellman@gmail.com",
+              id: "info-paragraph",
+            });
+
+            $("#result").empty();
+            $("#result").append(resultParagraph);
+            $("#result").append(infoParagraph);
+
+            $("#process_input").prop("disabled", false);
+          });
+        });
+      });
+    </script>
+  </body>
+</html>
