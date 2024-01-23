@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 import pandas as pd
-import statsmodels.api as sm
 
 from sklearn import linear_model, metrics
 from sklearn.ensemble import RandomForestRegressor

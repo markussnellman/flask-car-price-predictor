@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 import time
 from selectolax.parser import HTMLParser
-from utils import get_car_info
+from .utils import get_car_info
 
 base_url = os.environ.get('CAR_VALATION_BASE_URL')
 

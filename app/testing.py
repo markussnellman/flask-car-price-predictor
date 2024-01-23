@@ -1,9 +1,9 @@
 import os
 import pandas as pd
 import psycopg2
-from ml_models import random_forest_model, polynomial_model
+from .ml_models import random_forest_model, polynomial_model
 from sklearn.preprocessing import MinMaxScaler, PolynomialFeatures
-from utils import load_and_transform_data, load_from_db, transform_new_data
+from .utils import load_and_transform_data, load_from_db, transform_new_data
 
 
 db_url = os.environ.get('RENDER_TEST_DB_EXTERNAL_URL')

@@ -1,22 +1,20 @@
-import json
 import os
-import pickle
-
+from flask import Blueprint
 
 from flask import Flask, render_template, request, flash, jsonify
-from ml_models import polynomial_model, random_forest_model
-from utils import get_manufacturers_in_db, get_models_in_db, get_fuels_in_db, get_gearboxes_in_db, load_and_transform_data, transform_new_data, load_from_db
+from .ml_models import polynomial_model, random_forest_model
+from .utils import get_manufacturers_in_db, get_models_in_db, get_fuels_in_db, get_gearboxes_in_db, load_and_transform_data, transform_new_data, load_from_db
 from sklearn.preprocessing import MinMaxScaler, PolynomialFeatures
 
 
+# Create a Blueprint instance
+main_bp = Blueprint('main', __name__)
 
-app = Flask(__name__, static_folder='static') 
-app.secret_key = os.environ.get('CAR_VALUATION_FLASK_KEY')
 db_url = os.environ.get('RENDER_TEST_DB_EXTERNAL_URL')
 
 manufacturers = get_manufacturers_in_db()
 
-@app.route('/_update_car_dropdown')
+@main_bp.route('/_update_car_dropdown')
 def update_car_dropdown():
     
     """
@@ -37,7 +35,7 @@ def update_car_dropdown():
     return jsonify(html_string_selected=html_string_selected)
 
 
-@app.route('/_update_fuel_and_gearbox_dropdown', methods=['GET'])
+@main_bp.route('/_update_fuel_and_gearbox_dropdown', methods=['GET'])
 def update_fuel_and_gearbox_dropdown():
     """
     Updates fuel and gearbox dropdowns
@@ -69,7 +67,7 @@ def update_fuel_and_gearbox_dropdown():
     return jsonify(response_data)
 
 
-@app.route('/_predict_price')
+@main_bp.route('/_predict_price')
 def predict_price():
 
     # Get all data from user input
@@ -126,7 +124,7 @@ def predict_price():
     return jsonify(result)
 
     
-@app.route('/')
+@main_bp.route('/')
 def index():
 
     """
@@ -144,7 +142,3 @@ def index():
                        all_models = default_models,
                        all_fuels = default_fuels,
                        all_gearboxes = default_gearboxes)
-
-
-if __name__==("__main__"):
-    app.run(debug=True)
