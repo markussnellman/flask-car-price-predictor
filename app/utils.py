@@ -9,7 +9,6 @@ from sqlalchemy import create_engine
 from typing import Callable
 
 
-
 # Column datatypes
 col_dtype = {'url': str, 
              'price': float, 
@@ -167,6 +166,38 @@ def load_from_db(path: str, col_dtype=col_dtype, manufacturer='', model='') -> p
     """
     df = pd.read_sql(query, engine)
     return df
+
+def load_from_internal_db(path, col_dtype=col_dtype, model='', manufacturer='', db=None, table=None) -> pd.DataFrame:
+    """
+    Loads from database to Pandas Dataframe using SQLAlchemy.
+
+    """
+    
+    query_result = db.session.query(table).filter_by(manufacturer=manufacturer, model=model).all()
+    
+    # Convert query result to a list of dictionaries
+    data = [
+        {
+            'id': car.car_id, # need to rename here
+            'url': car.url,
+            'price': car.price,
+            'mileage': car.mileage,
+            'hp': car.hp,
+            'gearbox': car.gearbox,
+            'traffic_date': car.traffic_date,
+            'owners': car.owners,
+            'fuel': car.fuel,
+            'manufacturer': car.manufacturer,
+            'model': car.model
+        }
+        for car in query_result
+    ]
+
+    # Create a DataFrame from the list of dictionaries
+    df = pd.DataFrame(data)
+
+    return df
+
 
 
 def load_and_transform_data(strategy: Callable, path: str, **kwargs):
@@ -362,11 +393,14 @@ def get_gearboxes_in_db(cursor, manufacturer, model):
     return gearboxes
 
 if __name__=="__main__":
+    # 2024-04-04 saving all entries from database in backup as Render will close down the db
     db_url = os.environ.get('RENDER_TEST_DB_EXTERNAL_URL')
-    manufacturer = 'volvo'
-    model = 'xc60'
-
-    X, y = load_and_transform_data(load_from_db, db_url, manufacturer=manufacturer, model=model)
-
-    print('\n\n')
-    print(X.head())
+    
+    # SQLAlchemy requires postgresql instead of postgres
+    engine = create_engine(db_url.replace('postgres', 'postgresql', 1))
+    query = f"""
+    SELECT *
+    FROM cars;
+    """
+    df = pd.read_sql(query, engine)
+    df.to_csv("car_db_backup.csv", sep='\t', index=False)

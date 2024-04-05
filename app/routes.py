@@ -1,44 +1,90 @@
+from flask import render_template, request, jsonify, Flask
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import func
 import os
-from flask import Blueprint
 
-from flask import Flask, render_template, request, flash, jsonify
-from .ml_models import polynomial_model, random_forest_model
-from .utils import get_manufacturers_in_db, get_models_in_db, get_fuels_in_db, get_gearboxes_in_db, load_and_transform_data, transform_new_data, load_from_db
+from .models import Car
 from sklearn.preprocessing import MinMaxScaler, PolynomialFeatures
+from .ml_models import polynomial_model, random_forest_model
+from .utils import load_and_transform_data, transform_new_data, load_from_db, load_from_internal_db
+
+app = Flask(__name__, static_folder='static') 
+app.secret_key = os.environ.get('CAR_VALUATION_FLASK_KEY')
+
+# Here we specify location of local SQL database
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///cars.db"
+# We're not gonna track changes to our database for dev purposes
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config['EXPLAIN_TEMPLATE_LOADING'] = True
+
+# Create instance of DB
+db = SQLAlchemy(app)
 
 
-# Create a Blueprint instance
-main_bp = Blueprint('main', __name__)
+@app.route('/')
+def index():
 
-db_url = os.environ.get('RENDER_TEST_DB_EXTERNAL_URL')
+    """
+    initialize drop down menus
+    """
 
-manufacturers = get_manufacturers_in_db()
+    # Query all manufacturers. Returns like a list of one element tuples.
+    manufacturers = db.session.query(Car.manufacturer).distinct().all()
+    # A tuple is returned so use list comprehension to extract
+    default_manufacturers = [manufacturer[0] for manufacturer in manufacturers]
 
-@main_bp.route('/_update_car_dropdown')
+    # Query models from the first manufacturer
+    models = db.session.query(Car.model).filter_by(manufacturer=default_manufacturers[0]).distinct().all()
+    # Extract model names to a list
+    default_models = [model[0] for model in models]
+
+    # Query the fuels
+    fuels = db.session.query(Car.fuel).filter_by(manufacturer=default_manufacturers[0],
+                                                 model=default_models[0]).distinct().all()
+    default_fuels = [fuel[0] for fuel in fuels]
+
+    # Query the gearboxes
+    gearboxes = db.session.query(Car.gearbox).filter_by(manufacturer=default_manufacturers[0],
+                                                 model=default_models[0]).distinct().all()
+    default_gearboxes = [gearbox[0] for gearbox in gearboxes]
+
+    return render_template('index.html',
+                       all_manufacturers = default_manufacturers,
+                       all_models = default_models,
+                       all_fuels = default_fuels,
+                       all_gearboxes = default_gearboxes)
+
+
+@app.route('/_update_car_dropdown')
 def update_car_dropdown():
     
     """
-    Updates car model dropdowns.
+    Updates car model dropdowns on changing manufacturer.
     """
 
     # the value of the first dropdown = maufacturer (selected by the user)
     selected_manufacturer = request.args.get('selected_manufacturer', type=str)
+    print(selected_manufacturer)
 
     # get values for the second dropdown
-    updated_models = get_models_in_db(selected_manufacturer)
-
+    models = db.session.query(Car.model).filter_by(manufacturer=selected_manufacturer).distinct().all()
+    # Extract model names to a list
+    updated_models = [model[0] for model in models]
+    print(updated_models)
     # create the values in the dropdown as a html string
     html_string_selected = ''
     for entry in updated_models:
         html_string_selected += '<option value="{}">{}</option>'.format(entry, entry)
 
+    print(html_string_selected)
+
     return jsonify(html_string_selected=html_string_selected)
 
 
-@main_bp.route('/_update_fuel_and_gearbox_dropdown', methods=['GET'])
+@app.route('/_update_fuel_and_gearbox_dropdown', methods=['GET'])
 def update_fuel_and_gearbox_dropdown():
     """
-    Updates fuel and gearbox dropdowns
+    Updates fuel and gearbox dropdowns upon changing model.
     """
 
     # the value of the first dropdown = maufacturer (selected by the user)
@@ -46,10 +92,16 @@ def update_fuel_and_gearbox_dropdown():
     selected_model = request.args.get('selected_model', type=str)
 
     # get the fuel and gearboxes from db
-    print("Getting stuff from DB.")
-    print(f"Manufacturer: {selected_manufacturer}, model: {selected_model}")
-    fuels = get_fuels_in_db(selected_manufacturer, selected_model)
-    gearboxes = get_gearboxes_in_db(selected_manufacturer, selected_model)
+     # Query the gearboxes
+    gearboxes = db.session.query(Car.gearbox).filter_by(manufacturer=selected_manufacturer,
+                                                 model=selected_model).distinct().all()
+    gearboxes = [gearbox[0] for gearbox in gearboxes]
+
+    # Query the fuels
+    fuels = db.session.query(Car.fuel).filter_by(manufacturer=selected_manufacturer,
+                                                 model=selected_model).distinct().all()
+    fuels = [fuel[0] for fuel in fuels]
+
 
     # create the values in the dropdowns as a html string
     html_fuels = ''
@@ -64,10 +116,11 @@ def update_fuel_and_gearbox_dropdown():
         'html_fuels': html_fuels,
         'html_gearboxes': html_gearboxes
     }
+
     return jsonify(response_data)
 
 
-@main_bp.route('/_predict_price')
+@app.route('/_predict_price')
 def predict_price():
 
     # Get all data from user input
@@ -82,7 +135,7 @@ def predict_price():
     owners = request.args.get('owners', type=int)
 
     # Load the training data from DB
-    X, y = load_and_transform_data(load_from_db, db_url, manufacturer=selected_manufacturer, model=selected_model)
+    X, y = load_and_transform_data(load_from_internal_db, '', manufacturer=selected_manufacturer, model=selected_model, db=db, table=Car)
     n_cars = X.shape[0]
 
     # Scale the numerical variables with a min-max scaler
@@ -122,23 +175,3 @@ def predict_price():
               'n_cars': n_cars,
               'model_type': model_type}
     return jsonify(result)
-
-    
-@main_bp.route('/')
-def index():
-
-    """
-    initialize drop down menus
-    """
-
-    default_manufacturers = manufacturers
-    default_models = get_models_in_db(default_manufacturers[0])
-
-    default_fuels = get_fuels_in_db(default_manufacturers[0], default_models[0])
-    default_gearboxes = get_gearboxes_in_db(default_manufacturers[0], default_models[0])
-
-    return render_template('index.html',
-                       all_manufacturers = default_manufacturers,
-                       all_models = default_models,
-                       all_fuels = default_fuels,
-                       all_gearboxes = default_gearboxes)
